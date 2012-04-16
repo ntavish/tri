@@ -11,20 +11,34 @@ IplImage *t;
 
 ////////////////
 // PARAMS
+//blur
 int blur_param=0;
+//thresh
 int lowthresh=0;
 int highthresh=255;
+//findcontour
+int ct1=70, ct2=120;
 ////////////////
 
 IplImage *in=NULL, *out=NULL;//in and out are 1 channel images
-IplImage *orig, *orighsv;
+IplImage *orig, *orighsv, *origH, *origS, *origV;
+IplImage *temp;
 
-void findContours( IplImage* img, CvMemStorage* storage, CvSeq **contours, int threshold1, int threshold2)
+CvMemStorage *storage;
+
+CvSeq *contours;
+
+
+void drawContour(IplImage * image, CvSeq *cont)
+{
+	cvDrawContours( image, cont, cvScalar(255,255,255,0), cvScalar(255,255,255,0), 1, 1, 8 , cvPoint(0,0) );
+}
+
+void findContours( IplImage* img, CvMemStorage* storage, CvSeq **contours)
 {
     //for findContour function
     IplImage* timg  =NULL;
     IplImage* gray  =NULL;
-    IplImage* pyr   =NULL;
     IplImage* tgray =NULL;
 
     CvSize sz = cvSize( img->width, img->height );
@@ -32,24 +46,15 @@ void findContours( IplImage* img, CvMemStorage* storage, CvSeq **contours, int t
 	// make a copy of input image
 	gray = cvCreateImage( sz, img->depth, 1 );
 	timg = cvCreateImage( sz, img->depth, 1 );
-	pyr = cvCreateImage( cvSize(sz.width/2, sz.height/2), img->depth, 1 );
 	tgray = cvCreateImage( sz, img->depth, 1 );
 
 	cvSetImageCOI(img,1);
     cvCopy( img, timg,NULL );
 	cvSetImageCOI(img,0);
 
-    //cvSetImageROI( timg, cvRect( 0, 0, sz.width, sz.height ));
+    cvCopy( timg, tgray, 0 );
 
-    // down-scale and upscale the image to filter out the noise
-    cvPyrDown( timg, pyr, 7 );
-    cvPyrUp( pyr, timg, 7 );
-
-	cvCopy( timg, tgray, 0 );
-
-    // apply Canny. Take the upper threshold from slider
-    // and set the lower to 0 (which forces edges merging)
-    cvCanny( tgray, gray, threshold1, threshold2/*param1*/, 5 );
+    cvCanny( tgray, gray, ct1, ct2, 5 );
     // holes between edge segments
     cvDilate( gray, gray, 0, 2 );
 
@@ -59,7 +64,6 @@ void findContours( IplImage* img, CvMemStorage* storage, CvSeq **contours, int t
 
     //release all the temporary images
     cvReleaseImage( &gray );
-    cvReleaseImage( &pyr );
     cvReleaseImage( &tgray );
     cvReleaseImage( &timg );
 
@@ -79,11 +83,19 @@ void thresh(IplImage *in, IplImage *out)
 
 void draw(int dummy)
 {
-	blur(in, out);
+	cvClearMemStorage(storage);
+
+	blur(origV, out);
 	SWAP(in,out);
 	thresh(in, out);
+	findContours(out, storage, &contours);
 
-	cvShowImage(OUT, out);
+	cvMerge(origH, origS, out, NULL, temp);
+	cvCvtColor( temp, temp, CV_HSV2RGB );
+
+	drawContour(temp, contours);
+
+	cvShowImage(OUT, temp);
 }
 
 int main(int argc, char *argv[])
@@ -94,7 +106,10 @@ int main(int argc, char *argv[])
 	cvCreateTrackbar("blur", BARS, &blur_param, 15, draw);
 	cvCreateTrackbar("lowthresh", BARS, &lowthresh, 255, draw);
 	cvCreateTrackbar("highthresh", BARS, &highthresh, 255, draw);
-    CvMemStorage *storage = cvCreateMemStorage(0);
+	cvCreateTrackbar("ct1", BARS, &ct1, 255, draw);
+	cvCreateTrackbar("ct2", BARS, &ct2, 255, draw);
+
+    storage = cvCreateMemStorage(0);
 
 	if(argc > 1 )
 	{
@@ -108,9 +123,16 @@ int main(int argc, char *argv[])
 	//  in and out => 1 channel, hue channel
 	out=cvCreateImage(cvGetSize(orig), orig->depth, 1);
 	in=cvCreateImage(cvGetSize(orig), orig->depth, 1);
-	cvCvtColor(orig, in, CV_RGB2GRAY);
-	orighsv=cvCreateImage(cvGetSize(orig), orig->depth, orig->nChannels);
-	cvCvtColor(orig, orighsv, CV_RGB2HSV);
+
+	temp=cvCreateImage(cvGetSize(orig), orig->depth, 3);
+
+	origH=cvCreateImage(cvGetSize(orig), orig->depth, 1);
+	origS=cvCreateImage(cvGetSize(orig), orig->depth, 1);
+	origV=cvCreateImage(cvGetSize(orig), orig->depth, 1);
+
+	orighsv=cvCreateImage(cvGetSize(orig), orig->depth, 3);
+	cvCvtColor( orig, orighsv, CV_RGB2HSV);
+	cvSplit( orighsv,origH, origS,origV, NULL );
 
 	draw(0);
 
