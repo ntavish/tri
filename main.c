@@ -22,12 +22,14 @@ int ct1=70, ct2=120;
 //findcorners
 int blockSize=3;
 //every_contour
-int every=10, mincontour=20, maxcontour=200;
+int every=27, mincontour=10, maxcontour=2000;
 ////////////////
 
 IplImage *in=NULL, *out=NULL;//in and out are 1 channel images
+IplImage *mask;//for triangles
 IplImage *orig, *orighsv, *origH, *origS, *origV;
 IplImage *temp;
+IplImage *final;
 
 CvMemStorage *storage;
 
@@ -36,6 +38,83 @@ CvRect rect;//for delaunay
 CvSubdiv2D* subdiv;
 
 CvSeq *contours;
+
+void draw_subdiv_point( IplImage* img, CvPoint2D32f fp, CvScalar color )
+{
+    cvCircle( img, cvPoint(cvRound(fp.x), cvRound(fp.y)), 3, color, CV_FILLED, 8, 0 );
+}
+
+void draw_subdiv_facet( IplImage* img, CvSubdiv2DEdge edge )
+{
+    CvSubdiv2DEdge t = edge;
+    int i, count = 0;
+    CvPoint* buf = 0;
+
+    // count number of edges in facet
+    do
+    {
+        count++;
+        t = cvSubdiv2DGetEdge( t, CV_NEXT_AROUND_LEFT );
+    } while (t != edge );
+
+    buf = (CvPoint*)malloc( count * sizeof(buf[0]));
+
+    // gather points
+    t = edge;
+    for( i = 0; i < count; i++ )
+    {
+        CvSubdiv2DPoint* pt = cvSubdiv2DEdgeOrg( t );
+        CvPoint2D32f pt32f = pt->pt;// to 32f point
+		CvPoint p = cvPointFrom32f(pt32f); // to an integer point
+
+        if( !pt || p.x<0 || p.x > temp->width || p.y < 0 || p.y > temp->height) break;
+        buf[i] = cvPoint( cvRound(pt->pt.x), cvRound(pt->pt.y));
+        t = cvSubdiv2DGetEdge( t, CV_NEXT_AROUND_LEFT );
+    }
+
+    if( i == count )
+    {
+    	cvZero(mask);
+
+        CvSubdiv2DPoint* pt = cvSubdiv2DEdgeDst( cvSubdiv2DRotateEdge( edge, 0 ));
+        //fill mask with 1 triangle
+        cvFillConvexPoly( mask, buf, count, CV_RGB(255,255,255), CV_AA, 0 );
+        CvScalar col=cvAvg(orig, mask);
+
+        cvFillConvexPoly( img, buf, count, col, CV_AA, 0 );
+        //cvPolyLine( img, &buf, &count, 1, 1, CV_RGB(0,0,0), 1, CV_AA, 0);
+        //draw_subdiv_point( img, pt->pt, CV_RGB(0,0,0));
+    }
+    free( buf );
+}
+
+void paint_delaunay( CvSubdiv2D* subdiv, IplImage* img )
+{
+    CvSeqReader  reader;
+    int i, total = subdiv->edges->total;
+    int elem_size = subdiv->edges->elem_size;
+
+    cvCalcSubdivVoronoi2D( subdiv );
+
+    cvStartReadSeq( (CvSeq*)(subdiv->edges), &reader, 0 );
+
+    for( i = 0; i < total; i++ )
+    {
+        CvQuadEdge2D* edge = (CvQuadEdge2D*)(reader.ptr);
+
+        if( CV_IS_SET_ELEM( edge ))
+        {
+            CvSubdiv2DEdge e = (CvSubdiv2DEdge)edge;
+            // self
+            draw_subdiv_facet( img, cvSubdiv2DRotateEdge( e, 0 ));
+
+            // revself
+            draw_subdiv_facet( img, cvSubdiv2DRotateEdge( e, 2 ));
+        }
+
+        CV_NEXT_SEQ_ELEM( elem_size, reader );
+    }
+}
 
 
 void every_contour(CvSeq *contours, IplImage *im)
@@ -60,14 +139,16 @@ void every_contour(CvSeq *contours, IplImage *im)
 		{
 			CvPoint* p = (CvPoint*)cvGetSeqElem ( current, i );
 			//printf(“(%d,%d)\n”, p->x, p->y );
-			cvCircle(im, *p, 1, cvScalar(255,0,0,0), 1, 8, 0);
+			//cvCircle(im, *p, 1, cvScalar(255,0,0,0), 1, 8, 0);
 			cvSubdivDelaunay2DInsert(subdiv, cvPoint2D32f(p->x,p->y));
 
 		}
 
 		current=current->h_next;
 
-		draw_subdiv( temp, subdiv, cvScalar(255,255,255,255));
+		//draw_subdiv( temp, subdiv, cvScalar(255,255,255,255));
+		cvCalcSubdivVoronoi2D(subdiv);
+		paint_delaunay(subdiv, im);
 
 		cvClearMemStorage(trianglestore);
 
@@ -185,7 +266,6 @@ void draw_subdiv( IplImage* img, CvSubdiv2D* subdiv,
 
 void draw(int dummy)
 {
-
 	blur(origV, out);
 	SWAP(in,out);
 	thresh(in, out);
@@ -194,14 +274,14 @@ void draw(int dummy)
 	cvMerge(origH, origS, out, NULL, temp);
 	cvCvtColor( temp, temp, CV_HSV2RGB );
 
-	every_contour(contours, temp);
+	every_contour(contours, final);
 	//drawContour(temp, contours);
 	SWAP(in,out);
 
 
 	//findcorners(origH,out);   //needs 32bit float image
 
-	cvShowImage(OUT, temp);
+	cvShowImage(OUT, final);
 
 }
 
@@ -231,6 +311,10 @@ int main(int argc, char *argv[])
 	{
 		orig = cvLoadImage( "input.jpg" , CV_LOAD_IMAGE_COLOR);
 	}
+
+	mask=cvCreateImage(cvGetSize(orig), orig->depth, 1);
+	final=cvCreateImage(cvGetSize(orig), orig->depth, 3);cvZero(final);
+
 
 	rect=cvRect(0,0,orig->width, orig->height);//delaunay
 	//  in and out => 1 channel, hue channel
