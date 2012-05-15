@@ -1,4 +1,5 @@
 #include "cv.h"
+#include "cxtypes.h"
 #include "highgui.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -21,7 +22,7 @@ int ct1=70, ct2=120;
 //findcorners
 int blockSize=3;
 //every_contour
-int every=10, mincontour=20;
+int every=10, mincontour=20, maxcontour=200;
 ////////////////
 
 IplImage *in=NULL, *out=NULL;//in and out are 1 channel images
@@ -43,8 +44,13 @@ void every_contour(CvSeq *contours, IplImage *im)
 
 	while(current!=NULL)
 	{
+		//delaunay
+		cvClearMemStorage(storage);
+		subdiv=cvCreateSubdivDelaunay2D(rect,trianglestore);
+
+
 		int total=current->total;
-		if(total<mincontour)
+		if(total>maxcontour|| total<mincontour || (total/every)<3)
 		{
 			current=current->h_next;
 			continue;
@@ -56,9 +62,15 @@ void every_contour(CvSeq *contours, IplImage *im)
 			//printf(“(%d,%d)\n”, p->x, p->y );
 			cvCircle(im, *p, 1, cvScalar(255,0,0,0), 1, 8, 0);
 			cvSubdivDelaunay2DInsert(subdiv, cvPoint2D32f(p->x,p->y));
+
 		}
 
 		current=current->h_next;
+
+		draw_subdiv( temp, subdiv, cvScalar(255,255,255,255));
+
+		cvClearMemStorage(trianglestore);
+
 	}
 }
 
@@ -142,8 +154,9 @@ void draw_subdiv_edge( IplImage* img, CvSubdiv2DEdge edge, CvScalar color )
 
         iorg = cvPoint( cvRound( org.x ), cvRound( org.y ));
         idst = cvPoint( cvRound( dst.x ), cvRound( dst.y ));
-
-        cvLine( img, iorg, idst, color, 1, CV_AA, 0 );
+		//printf("%d %d     %d %d\n", iorg.x,iorg.y,idst.x,idst.y);
+		if(!(iorg.x<0||iorg.y<0||idst.x<0||idst.y<0||iorg.x>img->width||iorg.y>img->height||idst.x>img->width||idst.y>img->height))
+			cvLine( img, iorg, idst, color, 1, CV_AA, 0 );
     }
 }
 
@@ -172,9 +185,6 @@ void draw_subdiv( IplImage* img, CvSubdiv2D* subdiv,
 
 void draw(int dummy)
 {
-	//delaunay
-	cvClearMemStorage(storage);
-	subdiv=cvCreateSubdivDelaunay2D(rect,trianglestore);
 
 	blur(origV, out);
 	SWAP(in,out);
@@ -188,12 +198,11 @@ void draw(int dummy)
 	//drawContour(temp, contours);
 	SWAP(in,out);
 
-	draw_subdiv(temp,subdiv, cvScalar(255,255,255,255));
 
-	cvClearMemStorage(trianglestore);
 	//findcorners(origH,out);   //needs 32bit float image
 
 	cvShowImage(OUT, temp);
+
 }
 
 int main(int argc, char *argv[])
@@ -208,7 +217,8 @@ int main(int argc, char *argv[])
 	cvCreateTrackbar("ct2", BARS, &ct2, 255, draw);
 	cvCreateTrackbar("blocksize", BARS, &blockSize, 255, draw);
 	cvCreateTrackbar("skipevery", BARS, &every, 255, draw);
-	cvCreateTrackbar("mincontour", BARS, &mincontour, 255, draw);
+	cvCreateTrackbar("mincontour", BARS, &mincontour, 500, draw);
+	cvCreateTrackbar("maxcontour", BARS, &maxcontour, 2000, draw);
 
     storage = cvCreateMemStorage(0);
     trianglestore = cvCreateMemStorage(0);
@@ -241,7 +251,7 @@ int main(int argc, char *argv[])
 
 	cvShowImage(OUT, out);
 
-	cvWaitKey(0);
+	while(1){if(cvWaitKey(0)=='q')exit(0);else draw(0);}
 
     return 0;
 }
