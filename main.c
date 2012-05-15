@@ -2,7 +2,7 @@
 #include "highgui.h"
 #include <stdio.h>
 #include <stdlib.h>
-
+#include<string.h>
 #define OUT "output"
 #define BARS "bars"
 
@@ -23,7 +23,7 @@ int blockSize=3;
 //every_contour
 int every=10, mincontour=20;
 ////////////////
-
+int k=0;
 IplImage *in=NULL, *out=NULL;//in and out are 1 channel images
 IplImage *orig, *orighsv, *origH, *origS, *origV;
 IplImage *temp;
@@ -50,13 +50,32 @@ void every_contour(CvSeq *contours, IplImage *im)
 			continue;
 		}
 		int i;
+
+		FILE *poly;
+		poly = fopen("vert.poly", "wa");
+
+		int num;
+		char n[30];
+		sprintf(n, "%d", total/every);
+		write(poly, n, strlen(n));
+		write(poly, " 2 0 0", 6);
+
 		for( i=0; i<total; i+=every )
 		{
 			CvPoint* p = (CvPoint*)cvGetSeqElem ( current, i );
+
+			char ptstring[100];
+			sprintf(ptstring, "\n%d %d %d", i/every, p->x, p->y);
+			write(poly, ptstring, strlen(ptstring));
+
 			//printf(“(%d,%d)\n”, p->x, p->y );
-			cvCircle(im, *p, 1, cvScalar(255,0,0,0), 1, 8, 0);
+			//cvCircle(im, *p, 1, cvScalar(255,0,0,0), 1, 8, 0);
 			cvSubdivDelaunay2DInsert(subdiv, cvPoint2D32f(p->x,p->y));
 		}
+
+		write(poly, "\n0\n0", 4);
+
+		close(poly);exit(0);
 
 		current=current->h_next;
 	}
@@ -185,11 +204,16 @@ void draw(int dummy)
 	cvCvtColor( temp, temp, CV_HSV2RGB );
 
 	every_contour(contours, temp);
-	//drawContour(temp, contours);
+	drawContour(temp, contours);
 	SWAP(in,out);
 
 	draw_subdiv(temp,subdiv, cvScalar(255,255,255,255));
-
+		if(k==0)
+		{
+		cvNot(in,out);
+		//k=1;
+		}
+		else{}
 	cvClearMemStorage(trianglestore);
 	//findcorners(origH,out);   //needs 32bit float image
 
@@ -239,7 +263,7 @@ int main(int argc, char *argv[])
 
 	draw(0);
 
-	cvShowImage(OUT, out);
+	cvShowImage( OUT, out);
 
 	cvWaitKey(0);
 
