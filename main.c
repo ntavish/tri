@@ -1,5 +1,7 @@
 #include "cv.h"
 #include "cxtypes.h"
+#include "cxcore.h"
+#include "cvtypes.h"
 #include "highgui.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -9,6 +11,7 @@
 
 #define SWAP(x,y) t=x;x=y;y=t;
 IplImage *t;
+
 
 ////////////////
 // PARAMS
@@ -30,6 +33,8 @@ IplImage *mask;//for triangles
 IplImage *orig, *orighsv, *origH, *origS, *origV;
 IplImage *temp;
 IplImage *final;
+
+//IplImage *
 
 CvMemStorage *storage;
 
@@ -82,7 +87,7 @@ void draw_subdiv_facet( IplImage* img, CvSubdiv2DEdge edge )
         CvScalar col=cvAvg(orig, mask);
 
         cvFillConvexPoly( img, buf, count, col, CV_AA, 0 );
-        //cvPolyLine( img, &buf, &count, 1, 1, CV_RGB(0,0,0), 1, CV_AA, 0);
+        cvPolyLine( img, &buf, &count, 1, 1, CV_RGB(255,255,255), 1, CV_AA, 0);
         //draw_subdiv_point( img, pt->pt, CV_RGB(0,0,0));
     }
     free( buf );
@@ -183,7 +188,10 @@ void findContours( IplImage* img, CvMemStorage* storage, CvSeq **contours)
 
     cvCanny( tgray, gray, ct1, ct2, 5 );
     // holes between edge segments
-    cvDilate( gray, gray, 0, 2 );
+    //cvDilate( gray, gray, 0, 2 );
+
+    //cvShowImage(OUT, gray);
+    //cvWaitKey(0);
 
     cvFindContours( gray, storage, contours,
                     sizeof(CvContour),CV_RETR_LIST,
@@ -204,6 +212,8 @@ void findcorners(IplImage *in, IplImage *out)
 		blockSize,
 		3,
 		0.04 );
+
+
 }
 
 void blur(IplImage *in, IplImage *out)
@@ -269,6 +279,9 @@ void draw(int dummy)
 	blur(origV, out);
 	SWAP(in,out);
 	thresh(in, out);
+
+	cvZero(final);
+
 	findContours(out, storage, &contours);
 
 	cvMerge(origH, origS, out, NULL, temp);
@@ -290,15 +303,15 @@ int main(int argc, char *argv[])
     cvNamedWindow( OUT, 0 );
     cvNamedWindow( BARS, 0);
 
-	cvCreateTrackbar("blur", BARS, &blur_param, 15, draw);
+	cvCreateTrackbar("blur", BARS, &blur_param, 30, draw);
 	cvCreateTrackbar("lowthresh", BARS, &lowthresh, 255, draw);
 	cvCreateTrackbar("highthresh", BARS, &highthresh, 255, draw);
 	cvCreateTrackbar("ct1", BARS, &ct1, 255, draw);
 	cvCreateTrackbar("ct2", BARS, &ct2, 255, draw);
 	cvCreateTrackbar("blocksize", BARS, &blockSize, 255, draw);
-	cvCreateTrackbar("skipevery", BARS, &every, 255, draw);
-	cvCreateTrackbar("mincontour", BARS, &mincontour, 500, draw);
-	cvCreateTrackbar("maxcontour", BARS, &maxcontour, 2000, draw);
+	cvCreateTrackbar("skipevery", BARS, &every, 500, draw);
+	cvCreateTrackbar("mincontour", BARS, &mincontour, 5000, draw);
+	cvCreateTrackbar("maxcontour", BARS, &maxcontour, 5000, draw);
 
     storage = cvCreateMemStorage(0);
     trianglestore = cvCreateMemStorage(0);
@@ -335,7 +348,14 @@ int main(int argc, char *argv[])
 
 	cvShowImage(OUT, out);
 
-	while(1){if(cvWaitKey(0)=='q')exit(0);else draw(0);}
+	while(1){
+		char c;
+		if((c=cvWaitKey(0))=='q')
+			exit(0);
+		else if(c=='s')
+			cvSaveImage("save.jpg", final, NULL);
+		else
+				draw(0);}
 
     return 0;
 }
